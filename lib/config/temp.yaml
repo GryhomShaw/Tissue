@@ -1,0 +1,5 @@
+DATASET:
+  NEG: /home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/data/tissue-train-neg
+  PATCH: /home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/data/patch
+  POS: /home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/data/tissue-train-pos
+  ROOT: /home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/data
