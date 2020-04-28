@@ -2,6 +2,7 @@ import os
 import cv2
 import shutil
 import argparse
+import json
 import numpy as np
 import threadpool
 
@@ -27,26 +28,45 @@ def cur_img(p):
     threshold = config.DATASET.PATCHTHRESH
     img_name = os.path.splitext(img_path.split('/')[-1])[0]
     output_path = os.path.join(os.path.join(config.DATASET.PATCH, 'pos' if ispos else 'neg'), img_name)
-    if not os.path.isdir(output_path):
-        os.makedirs(output_path)
+    mask_output_path = os.path.join(os.path.join(config.DATASET.PATCH, 'mask'))
+    color_output_path = os.path.join(os.path.join(config.DATASET.PATCH, 'color'))
 
+
+    try:
+        os.makedirs(output_path)
+    except:
+        pass
+
+    try:
+        os.makedirs(mask_output_path)
+    except:
+        pass
+
+    try:
+        os.makedirs(color_output_path)
+    except:
+        pass
     img = cv2.imread(img_path)
     h, w = img.shape[0], img.shape[1]
     mask = ostu(img)
+    cv2.imwrite(os.path.join(mask_output_path, img_name+'_mask.jpg'), mask)
+    labels = []
     for i in range(0, h, step):
         for j in range(0, w, step):
             x2 = min(h, i + psize)
             y2 = min(w, j + psize)
             x1 = max(0, min(i, x2 - psize))
             y1 = max(0, min(j, y2 - psize))
-            #print(x1, y1, x2, y2)
             cur = img[x1:x2, y1:y2, :]
             cur_mask = mask[x1:x2, y1:y2]
             if np.sum(cur_mask) // 255 < threshold * psize * psize:
                 continue
+            labels.append([x1, y1, x2, y2])
             cur_img_name = "{}_{}.jpg".format(str(x1), str(y1))
             print(os.path.join(output_path, cur_img_name))
             cv2.imwrite(os.path.join(output_path, cur_img_name), cur)
+    color_img = color(img, labels)
+    cv2.imwrite(os.path.join(color_output_path, img_name+'_color.jpg'), color_img)
 
 
 def ostu(img):
@@ -63,11 +83,18 @@ def check():
         count[each] = 0
         for each_dirs in os.listdir(os.path.join(patch_root, each)):
             cur_path = os.path.join(os.path.join(patch_root, each), each_dirs)
-            if len(os.listdir(cur_path)) == 0:
-                os.rmdir(cur_path)
+            if len(os.listdir(cur_path)) < config.DATASET.LOWWER or len(os.listdir(cur_path)) > config.DATASET.UPPER:
+                shutil.rmtree(cur_path)
                 count[each] += 1
                 print("Remove {}".format(cur_path))
     print(count)
+
+
+def color(img, coords):
+    for each_coord in coords:
+        img = cv2.rectangle(img, (each_coord[1], each_coord[0]), (each_coord[3], each_coord[2]), (255, 0, 0), 3)
+    return img
+
 
 if __name__ == '__main__':
     args = get_args()

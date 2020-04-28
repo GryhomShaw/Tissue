@@ -10,3 +10,5 @@ scripts/
 detail-api/
 tissue=train-neg/
 tissue-train-pos/
+color/
+mask/
