@@ -20,7 +20,7 @@ _C.DATASET.PATCHTHRESH = 0.65
 _C.DATASET.POOLSIZE = 1
 _C.DATASET.LOWWER = 20
 _C.DATASET.UPPER = 100
-_C.DATASET.MULTISCALE = [1,2]
+_C.DATASET.MULTISCALE = [1, 2]
 # tainval split
 _C.DATASET.SPLIT = os.path.join(_C.ROOT, 'lib/dataloader/train_val_split.json')
 _C.DATASET.SPLITRATIOS = [9, 1]
