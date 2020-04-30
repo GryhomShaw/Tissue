@@ -69,6 +69,7 @@ class MILdataset(data.Dataset):
         self.mode = mode
 
     def maketraindata(self, idxs):
+        self.t_data = []
         for each in idxs:
             cur_idx = each[0]
             cur_sacle = self.multi_scale[each[1]]
@@ -76,11 +77,8 @@ class MILdataset(data.Dataset):
             part_idx = cur_idx % pow(cur_sacle, 2)
             self.t_data.append([self.grid[img_idx], self.targets[self.slideIDX[img_idx]], part_idx, each[1]])
 
-
-
     def shuffletraindata(self):
         self.t_data = random.sample(self.t_data, len(self.t_data))
-
 
     def get_part(self, idx, mode):
         col = self.multi_scale[mode]
@@ -88,7 +86,6 @@ class MILdataset(data.Dataset):
         row_idx = idx // col
         col_idx = idx % col
         return row_idx * unit, col_idx * unit
-
 
     def __getitem__(self, index):
 
@@ -103,8 +100,6 @@ class MILdataset(data.Dataset):
                 ifaug = np.random.randint(2)
                 if ifaug == 1:  # 50%
                     img = self.seq.augment_image(img)
-                if self.ished:
-                    img = self.img2hed(img)
                 img = cv2.resize(img, (224, 224))
             if self.transform is not None:
                 img = self.transform(img)
@@ -112,7 +107,6 @@ class MILdataset(data.Dataset):
         else:
             cur_scale = self.multi_scale[self.mode]
             img_idx = index // pow(cur_scale, 2)
-            print(self.grid[img_idx])
             part_idx = index % pow(cur_scale, 2)
             row, col = self.get_part(part_idx, self.mode)
             img_path = self.grid[img_idx]

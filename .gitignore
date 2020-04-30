@@ -6,7 +6,7 @@ __pycache__/
 data/
 log/
 patch/
-output/
+train_output/
 pretrained_models
 scripts/
 detail-api/
