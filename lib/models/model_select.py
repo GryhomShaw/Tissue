@@ -10,4 +10,4 @@ MODEL_DICT = {
 
 def get_model(cfg):
 
-    return MODEL_DICT[cfg.TRAIN.MODEL]
+    return MODEL_DICT[cfg.MODEL]

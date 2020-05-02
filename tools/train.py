@@ -71,7 +71,6 @@ def main():
             data = json.load(f)
 
         train_dset = MILdataset(data['train_neg'] + data['train_pos'], trans)
-        print(len(train_dset.slideLen))
         train_loader = DataLoader(
             train_dset,
             batch_size=config.TRAIN.BATCHSIZE, shuffle=False,
@@ -107,10 +106,10 @@ def main():
         cp('(#r)Training(#)\t(#b)Epoch: [{}/{}](#)\t(#g)Loss:{}(#)'.format(epoch+1, config.TRAIN.EPOCHS, loss))
 
         if config.TRAIN.VAL and (epoch+1) % config.TRAIN.VALGAP == 0:
-            val_dset.setmode(0)
+            val_dset.setmode(len(config.DATASET.MULTISCALE)-1)
             probs = inference(epoch, val_loader, model)
-            maxs = group_max(np.array(val_dset.slideIDX), probs, len(val_dset.targets))
-            threshold = 0.5
+            maxs = group_max(np.array(val_dset.slideLen), probs, len(val_dset.targets), config.DATASET.MULTISCALE[-1])
+            threshold = 0.6
             pred = [1 if x >= threshold else 0 for x in maxs]
             err, fpr, fnr, f1 = calc_err(pred, val_dset.targets)
             cp('(#y)Vaildation\t(#)(#b)Epoch: [{}/{}]\t(#)(#g)Error: {}\tFPR: {}\tFNR: {}\tF1: {}(#)'.format(epoch+1, config.TRAIN.EPOCHS, err, fpr, fnr, f1))
@@ -137,7 +136,7 @@ def inference(run, loader, model):
     probs = torch.FloatTensor(len(loader.dataset))
     with torch.no_grad():
         end = time.time()
-        for i, input in enumerate(loader):
+        for i, (input, _, _, _) in enumerate(loader):
             data_time.update(time.time() - end)
             input = input.cuda()
             batch_time.update(time.time()-end)
@@ -213,7 +212,12 @@ def group_argtopk(data, targets, slideLen, scale):
     return list(order[index])
 
 
-def group_max(groups, data, nmax):
+def group_max(slideLen, data, nmax, scale):
+    groups = []
+    slideLen = np.array(slideLen[:]) * pow(scale, 2)
+    for slide_idx in np.arange(1, len(slideLen)):
+        groups.extend([slide_idx-1] * (slideLen[slide_idx] - slideLen[slide_idx-1]))
+    groups = np.array(groups)
     out = np.empty(nmax)
     out[:] = np.nan
     order = np.lexsort((data, groups))

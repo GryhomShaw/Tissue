@@ -117,7 +117,7 @@ class MILdataset(data.Dataset):
                 img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_NEAREST)
             if self.transform is not None:
                 img = self.transform(img)
-            return img
+            return img, img_idx, row, col
 
     def __len__(self):
         if self.mode == -1:
