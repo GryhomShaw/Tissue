@@ -1,5 +1,6 @@
 import sys
 import os
+import time
 import numpy as np
 import argparse
 import random
@@ -26,6 +27,10 @@ from lib.config import config
 from lib.config import update_config
 from lib.models.model_select import get_model
 from lib.dataloader.dataset import MILdataset
+from lib.core.function import inference_vt
+from lib.utils.parser import probs_parser, group_max, get_mask
+from lib.core.criterion import calc_err
+from lib.core.criterion import calc_dsc
 os.environ['CUDA_VISIBLE_DEVICES'] = config.GPUS
 
 
@@ -43,7 +48,7 @@ def main():
     #load model
     with procedure('load model'):
         model = get_model(config)
-        model.fc = nn.Linear(model.fc.in_features, config.NUMCLASSES)
+        #model.fc = nn.Linear(model.fc.in_features, config.NUMCLASSES)
         model = nn.DataParallel(model.cuda())
         if config.TEST.RESUME:
             ch = torch.load(config.TEST.CHECKPOINT)
@@ -66,111 +71,64 @@ def main():
             num_workers=config.WORKERS, pin_memory=True)
 
     #dset.setmode(len(config.DATASET.MULTISCALE)-1)
-    dset.setmode(len(config.DATASET.MULTISCALE)-2)
-    probs, img_idxs, rows, cols = inference(loader, model)
-    patch_info = probs_parser(probs, img_idxs, rows, cols, dset, config.DATASET.MULTISCALE[-2])
-    #print(patch_info)
-    for img_path, labels in patch_info.items():
-        if len(labels) == 0:
-            continue
-        plot_label(img_path, labels, config.DATASET.MULTISCALE[-2])
+    output_path = os.path.join(config.TEST.OUTPUT, config.MODEL)
+    patch_info = {}
+    for idx, each_scale in enumerate(config.DATASET.MULTISCALE):
+        dset.setmode(idx)
+        probs, img_idxs, rows, cols = inference_vt(0, loader, model)
+        maxs = group_max(dset.slideLen, probs[:, 1], len(dset.targets), each_scale)
+        maxs = [1 if each >= 0.5 else 0 for each in maxs]
+        err, fpr, fnr, f1 = calc_err(maxs, dset.targets)
+        res = probs_parser(probs, img_idxs, rows, cols, dset, each_scale)
+        for key, values in res.items():
+            if key not in patch_info:
+                patch_info[key] = values
+            else:
+                patch_info[key].extend(values)
 
-    #maxs = group_max(dset.slideLen, probs[:, 1], len(dset.targets), config.DATASET.MULTISCALE[0])
-
-
-def probs_parser(probs, img_idxs, rows, cols, dset, scale):
-    assert isinstance(probs, np.ndarray) and isinstance(img_idxs, np.ndarray) and isinstance(rows, np.ndarray) and \
-           isinstance(cols, np.ndarray), print("TYPE ERROR")
-
-    assert probs.shape[0] == img_idxs.shape[0] and img_idxs.shape[0] == rows.shape[0] and \
-           rows.shape[0] == cols.shape[0], print("LENGTH ERROR")
-
-    prefix = 'tissue-train-'
-    slide_len = np.array(dset.slideLen) * pow(scale, 2)
-    assert slide_len[-1] == probs.shape[0], print("VAL ERROR")
-    slide_names = [prefix + dset.grid[each_idx].split('/')[-3] + '/' + dset.grid[each_idx].split('/')[-2]+'.jpg'
-                    for each_idx in img_idxs]
-    row_offsets = np.array([int(dset.grid[each_idx].split('/')[-1].split('_')[0]) for each_idx in img_idxs])
-    col_offsets = np.array([int((dset.grid[each_idx].split('/')[-1].split('_')[-1]).replace('.jpg', ''))
-                            for each_idx in img_idxs])
-    img_path = [os.path.join(os.path.join(config.DATASET.ROOT, each_name)) for each_name in slide_names]
-    rows = rows + row_offsets
-    cols = cols + col_offsets
-    res = {}
-    for idx in range(slide_len.shape[0]-1):
-        start = slide_len[idx]
-        end = slide_len[idx+1]
-        res[img_path[start]] = []
-        for label_idx in range(start, end):
-            if probs[label_idx][0] > probs[label_idx][1]:
+        for img_path, labels in res.items():
+            if len(labels) == 0:
                 continue
-            res[img_path[start]].append([rows[label_idx], cols[label_idx], probs[label_idx][1]])
-    return res
+            plot_label(img_path, labels, each_scale, output_path)
+    masks = get_mask(patch_info)
+    dsc = []
+    for img_path, pred in masks.items():
+        slide_class = img_path.split('/')[-2].split('-')[-1]
+        slide_name = img_path.split('/')[-1].replace('.jpg', '_mask.jpg')
+        save_img(pred*255, os.path.join(output_path, slide_class), slide_name)
+        mask_path = img_path.replace('.jpg', '_mask.jpg')
+
+        if os.path.isfile(mask_path):
+            mask = cv2.imread(mask_path, 0)
+            mask = mask.astype(np.int) if np.max(mask) == 1 else (mask // 255).astype(np.int)
+            dsc.append(calc_dsc(pred, mask))
+    mean_dsc = np.array(dsc).mean()
+    print(mean_dsc, dsc)
 
 
-def plot_label(img_path, labels, scale):
+def plot_label(img_path, labels, scale, output_path):
     slide_class = img_path.split('/')[-2].split('-')[-1]
-    slide_name = img_path.split('/')[-1] #pos/XXXX
-    if not os.path.isdir(os.path.join(config.TEST.OUTPUT, slide_class)):
-        os.makedirs(os.path.join(config.TEST.OUTPUT, slide_class))
-    save_path = os.path.join(os.path.join(config.TEST.OUTPUT, slide_class), slide_name)
+    slide_name = img_path.split('/')[-1] .replace('.jpg', '')
+    if not os.path.isdir(os.path.join(output_path, slide_class)):
+        os.makedirs(os.path.join(output_path, slide_class))
+    save_path = os.path.join(os.path.join(output_path, slide_class), slide_name+'(' + str(scale) + ').jpg')
     img = cv2.imread(img_path)
-    print(img.shape)
     patch_size = config.DATASET.PATCHSIZE // scale
     for label in labels:
+        if labels[2][0] > labels[2][1]:
+            continue
         h, w = label[0], label[1]
         start = (w, h)
         end = (w+patch_size, h+patch_size)
         cv2.rectangle(img, start, end, (0, 255, 0), 5)
-        cv2.putText(img, str(round(label[2], 2)), (w+25, h+25), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 1)
+        cv2.putText(img, str(round(label[2][1], 2)), (w+25, h+25), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 1)
     cv2.imwrite(save_path, img)
 
 
-def inference(loader, model):
-    model.eval()
-    probs = torch.FloatTensor(len(loader.dataset), 2)
-    img_idxs = []
-    rows = []
-    cols = []
-    with torch.no_grad():
-        for i, (input, img_idx, row, col) in enumerate(loader):
-            print('Batch: [{}/{}]'.format(i+1, len(loader)))
-            input = input.cuda()
-            img_idxs.extend(list(img_idx.numpy()))
-            rows.extend(list(row.numpy()))
-            cols.extend(list(col.numpy()))
-            output = F.softmax(model(input), dim=1)
-            probs[i*config.TEST.BATCHSIZE:i*config.TEST.BATCHSIZE+input.size(0), :] = output.detach().clone()
-    return probs.cpu().numpy(), np.array(img_idxs), np.array(rows), np.array(cols)
-
-
-def group_max(slideLen, data, nmax, scale):
-    groups = []
-    slideLen = np.array(slideLen[:]) * pow(scale, 2)
-    for slide_idx in np.arange(1, len(slideLen)):
-        groups.extend([slide_idx-1] * (slideLen[slide_idx] - slideLen[slide_idx-1]))
-    groups = np.array(groups)
-    out = np.empty(nmax)
-    out[:] = np.nan
-    order = np.lexsort((data, groups))
-    groups = groups[order]
-    data = data[order]
-    index = np.empty(len(groups), 'bool')
-    index[-1] = True
-    index[:-1] = groups[1:] != groups[:-1]
-    out[groups[index]] = data[index]
-    return out
-
-
-def calc_err(pred, real):
-    pred = np.array(pred)
-    real = np.array(real)
-    neq = np.not_equal(pred, real)
-    err = float(neq.sum())/pred.shape[0]
-    fpr = float(np.logical_and(pred==1,neq).sum())/(real==0).sum()
-    fnr = float(np.logical_and(pred==0,neq).sum())/(real==1).sum()
-    f1 = f1_score(real, pred, average='binary')
-    return err, fpr, fnr, f1
+def save_img(img, save_path, slide_name):
+    if not os.path.isdir(save_path):
+        os.makedirs(save_path)
+    cv2.imwrite(os.path.join(save_path, slide_name), img)
 
 
 if __name__ == '__main__':

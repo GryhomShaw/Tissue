@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 from torch.autograd import Variable
+from sklearn.metrics import f1_score
 
 
 class FocalLoss(nn.Module):
@@ -12,7 +14,6 @@ class FocalLoss(nn.Module):
         if isinstance(alpha, (float, int)): self.alpha = torch.Tensor([alpha, 1-alpha])
         if isinstance(alpha, list): self.alpha = torch.Tensor(alpha)
         self.size_average = size_average
-
 
     def adjust_gamma(self, gamma):
         self.gamma = gamma
@@ -42,3 +43,21 @@ class FocalLoss(nn.Module):
         else:
             return self.loss.sum()
 
+
+def calc_err(pred, real):
+    pred = np.array(pred)
+    real = np.array(real)
+    neq = np.not_equal(pred, real)
+    err = float(neq.sum())/pred.shape[0]
+    fpr = float(np.logical_and(pred == 1, neq).sum()) / (real == 0).sum()
+    fnr = float(np.logical_and(pred == 0, neq).sum()) / (real == 1).sum()
+    f1 = f1_score(real, pred, average='binary')
+    return err, fpr, fnr, f1
+
+
+def calc_dsc(pred, mask):
+    assert pred.shape == mask.shape, print("SHAPE ERROR")
+    assert np.max(pred) <= 1 and np.max(mask) <= 1, print('VAL ERROR')
+    eq = np.equal(pred, mask)
+    overlap = 2 * (np.logical_and(eq, pred == 1).sum())
+    return overlap / (pred.sum() + mask.sum())

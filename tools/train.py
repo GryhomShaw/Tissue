@@ -5,6 +5,7 @@ import numpy as np
 import argparse
 import random
 import json
+import cv2
 
 import torch
 import torch.nn as nn
@@ -18,13 +19,18 @@ from eic_utils import procedure, cp
 
 from lib.utils.summary import TensorboardSummary
 from lib.utils.average import AverageMeter, ProgressMeter
-from sklearn.metrics import f1_score
+from lib.utils.parser import group_max,  group_argtopk, probs_parser, get_mask
 
 from lib.config import config
 from lib.config import update_config
 from lib.dataloader.dataset import MILdataset
 from lib.models.model_select import get_model
-from lib.loss.criterion import FocalLoss
+from lib.core.criterion import FocalLoss
+from lib.core.criterion import calc_err, calc_dsc
+from lib.core.function import trainer
+from lib.core.function import inference
+from lib.core.function import inference_vt
+
 from torch.utils.data import DataLoader
 
 
@@ -38,21 +44,20 @@ def get_args():
 
 
 os.environ["CUDA_VISIBLE_DEVICES"] =config.GPUS
-best_acc = 0.
+best_dsc = 0.
 
 def main():
+
     args = get_args()
-    global best_acc
+    global best_dsc
     #cnn
     with procedure('init model'):
         model = get_model(config)
-        model.fc = nn.Linear(model.fc.in_features, 2)
         model = torch.nn.parallel.DataParallel(model.cuda())
 
     with procedure('loss and optimizer'):
-        criterion = FocalLoss(config.TRAIN.LOSS.GAMMA).cuda()
+        criterion = FocalLoss(config.TRAIN.LOSS.GAMMA, config.DATASET.ALPHA).cuda()
         optimizer = optim.Adam(model.parameters(), lr=config.TRAIN.LR, weight_decay=config.TRAIN.LR)
-
     start_epoch = 0
 
     if config.TRAIN.RESUME:
@@ -87,6 +92,9 @@ def main():
         if not os.path.isdir(train_log_path):
             os.makedirs(train_log_path)
         tensorboard_path = os.path.join(train_log_path, 'tensorboard')
+        #os.system('python ./lib/config/default.py {}'.format(os.path.join(train_log_path, 'cfg.yaml')))
+        with open(os.path.join(train_log_path, 'cfg.yaml'), 'w') as f:
+            print(config, file=f)
         if not os.path.isdir(tensorboard_path):
             os.makedirs(tensorboard_path)
         summary = TensorboardSummary(tensorboard_path)
@@ -102,146 +110,57 @@ def main():
         train_dset.maketraindata(index)
         train_dset.shuffletraindata()
         train_dset.setmode(-1)
-        loss = train(epoch, train_loader, model, criterion, optimizer, writer)
+        loss = trainer(epoch, train_loader, model, criterion, optimizer, writer)
         cp('(#r)Training(#)\t(#b)Epoch: [{}/{}](#)\t(#g)Loss:{}(#)'.format(epoch+1, config.TRAIN.EPOCHS, loss))
 
         if config.TRAIN.VAL and (epoch+1) % config.TRAIN.VALGAP == 0:
-            val_dset.setmode(len(config.DATASET.MULTISCALE)-1)
-            probs = inference(epoch, val_loader, model)
+            patch_info = {}
+            for idx, each_scale in enumerate(config.DATASET.MULTISCALE):
+                val_dset.setmode(idx)
+                probs, img_idxs, rows, cols = inference_vt(epoch, val_loader, model)
+                res = probs_parser(probs, img_idxs, rows, cols, val_dset, each_scale)
+                for key, val in res.items():
+                    if key not in patch_info:
+                        patch_info[key] = val
+                    else:
+                        patch_info[key].extend(val)
+            masks = get_mask(patch_info)
+            dsc = []
+            for img_path, pred in masks.items():
+                mask_path = img_path.replace('.jpg', '_mask.jpg')
+                if os.path.isfile(mask_path):
+                    mask = cv2.imread(img_path.replace('.jpg', '_mask.jpg'), 0)
+                    mask = mask.astype(np.int) if np.max(mask) == 1 else (mask // 255).astype(np.int)
+                    dsc .append(calc_dsc(pred, mask))
+            dsc = np.array(dsc).mean()
+            '''
             maxs = group_max(np.array(val_dset.slideLen), probs, len(val_dset.targets), config.DATASET.MULTISCALE[-1])
-            threshold = 0.6
+            threshold = 0.5
             pred = [1 if x >= threshold else 0 for x in maxs]
             err, fpr, fnr, f1 = calc_err(pred, val_dset.targets)
-            cp('(#y)Vaildation\t(#)(#b)Epoch: [{}/{}]\t(#)(#g)Error: {}\tFPR: {}\tFNR: {}\tF1: {}(#)'.format(epoch+1, config.TRAIN.EPOCHS, err, fpr, fnr, f1))
-            writer.add_scalar('Val/err', err, epoch)
-            writer.add_scalar('Val/f1', f1, epoch)
 
-            if 1-err >= best_acc:
-                best_acc = 1-err
+            cp('(#y)Vaildation\t(#)(#b)Epoch: [{}/{}]\t(#)(#g)Error: {}\tFPR: {}\tFNR: {}\tF1: {}(#)'.format(epoch+1, config.TRAIN.EPOCHS, err, fpr, fnr, f1))
+            '''
+            cp('(#y)Vaildation\t(#)(#b)Epoch: [{}/{}]\t(#)(#g)DSC: {}(#)'.format(epoch+1, config.TRAIN.EPOCHS, dsc))
+            writer.add_scalar('Val/dsc', dsc, epoch)
+            if dsc >= best_dsc:
+                best_dsc = dsc
                 obj = {
                     'epoch': epoch+1,
                     'state_dict': model.state_dict(),
-                    'best_acc': best_acc,
+                    'best_dsc': best_dsc,
                     'optimizer':optimizer.state_dict()
                 }
                 torch.save(obj, os.path.join(train_log_path, 'BestCheckpoint.pth'))
-
-
-def inference(run, loader, model):
-    batch_time = AverageMeter('Time', ':6.3f')
-    data_time = AverageMeter('Data', ':6.3f')
-    progress = ProgressMeter(len(loader), [batch_time, data_time],
-                             prefix=cp.trans("(#b)[INF](#) Epoch: [{}]".format(run)))
-    model.eval()
-    probs = torch.FloatTensor(len(loader.dataset))
-    with torch.no_grad():
-        end = time.time()
-        for i, (input, _, _, _) in enumerate(loader):
-            data_time.update(time.time() - end)
-            input = input.cuda()
-            batch_time.update(time.time()-end)
-            output = F.softmax(model(input), dim=1)
-            probs[i*config.TRAIN.BATCHSIZE:i*config.TRAIN.BATCHSIZE+input.size(0)] = output.detach()[:, 1].clone()
-            if (i+1) % 100 == 0:
-                progress.display(i)
-            end = time.time()
-    return probs.cpu().numpy()
-
-
-def train(run, loader, model, criterion, optimizer, writer):
-    losses = AverageMeter('Loss', ':.4f')
-    batch_time = AverageMeter('Time', ':6.3f')
-    data_time = AverageMeter('Data', ':6.3f')
-    progress = ProgressMeter(len(loader), [batch_time, data_time, losses],
-                             prefix=cp.trans("(#b)[TRN](#) Epoch: [{}]".format(run)))
-    model.train()
-    running_loss = 0.
-    end = time.time()
-    criterion.adjust_gamma(gamma_ploy(run))
-    for i, (input, target) in enumerate(loader):
-        data_time.update(time.time() - end)
-        input = input.cuda()
-        target = target.cuda()
-        output = model(input)
-        loss = criterion(output, target)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        batch_time.update(time.time() - end)
-        losses.update(loss.item(),input.size(0))
-        running_loss += loss.item()*input.size(0)
-        progress.display(i)
-        writer.add_scalar('train/loss', loss.item(), run * len(loader) + i)
-        end =time.time()
-    return running_loss/len(loader.dataset)
-
-
-def calc_err(pred,real):
-    pred = np.array(pred)
-    real = np.array(real)
-    neq = np.not_equal(pred, real)
-    err = float(neq.sum())/pred.shape[0]
-    fpr = float(np.logical_and(pred==1,neq).sum())/(real==0).sum()
-    fnr = float(np.logical_and(pred==0,neq).sum())/(real==1).sum()
-    f1 = f1_score(real, pred, average='binary')
-    return err, fpr, fnr, f1
-
-
-def group_argtopk(data, targets, slideLen, scale):
-    k = config.TRAIN.SELECTNUM * scale
-    slideLen = np.array(slideLen[:]) * pow(scale, 2)
-    groups = []
-    for slide_idx in np.arange(1, len(slideLen)):
-        groups.extend([slide_idx-1] * (slideLen[slide_idx] - slideLen[slide_idx-1]))
-    groups = np.array(groups)
-    assert groups.shape[0] == slideLen[-1], print("SHAPE ERROR")
-    assert groups.shape[0] == data.shape[0], print("SHAPE ERROR")
-    order = np.lexsort((data, groups))
-    groups = groups[order]
-    index = np.full(len(groups), False)
-    if config.TRAIN.MODE == 'max-max': # max-max
-        index[-k:] = True
-        index[:-k] = groups[k:] != groups[:-k]
-    else:
-        for idx in range(1, slideLen.shape[0]):
-            cur_id = idx-1
-            if targets[cur_id] == 1:
-                index[slideLen[idx] - k:slideLen[idx]] = True
-            else:
-                index[slideLen[cur_id]:slideLen[cur_id] + k] = True
-    return list(order[index])
-
-
-def group_max(slideLen, data, nmax, scale):
-    groups = []
-    slideLen = np.array(slideLen[:]) * pow(scale, 2)
-    for slide_idx in np.arange(1, len(slideLen)):
-        groups.extend([slide_idx-1] * (slideLen[slide_idx] - slideLen[slide_idx-1]))
-    groups = np.array(groups)
-    out = np.empty(nmax)
-    out[:] = np.nan
-    order = np.lexsort((data, groups))
-    groups = groups[order]
-    data = data[order]
-    index = np.empty(len(groups), 'bool')
-    index[-1] = True
-    index[:-1] = groups[1:] != groups[:-1]
-    out[groups[index]] = data[index]
-    return out
 
 
 def load_model(model, optimizer):
     ckpt = torch.load(config.TRAIN.CHECKPOINT)
     model.load_state_dict(ckpt['state_dict'])
     optimizer.load_state_dict(ckpt['optimizer'])
-    return ckpt['epoch'], ckpt['best_acc'], model, optimizer
+    return ckpt['epoch'], ckpt['best_dsc'], model, optimizer
 
 
-def gamma_ploy(epoch):
-    if epoch < 2:
-        return 0
-    else:
-        return 1
 
 
 if __name__ == '__main__':
