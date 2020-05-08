@@ -69,11 +69,7 @@ def cur_img(p):
     cv2.imwrite(os.path.join(color_output_path, img_name+'_color.jpg'), color_img)
 
 
-def ostu(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    ret1, th1 = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU)
-    mask = 255 - th1
-    return mask
+
 
 
 def check():
