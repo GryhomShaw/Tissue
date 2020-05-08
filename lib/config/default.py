@@ -32,7 +32,7 @@ _C.DATASET.STD = [0.229, 0.224, 0.225]  #RGB
 _C.DATASET.ALPHA = [1, 2.2] #正负样本比
 # tainval split
 _C.DATASET.SPLIT = os.path.join(_C.ROOT, 'lib/dataloader/train_val_split.json')
-_C.DATASET.SPLITRATIOS = [9, 1]
+_C.DATASET.SPLITRATIOS = [8, 1, 1]
 
 _C.TRAIN = CN()
 _C.TRAIN.VAL = True

@@ -19,14 +19,15 @@ def train_val_split(path):
 
     total = len(images)
 
-    train_n = int(round(total * percent[0]))
+    train_num = int(round(total * percent[0]))
+    val_num = int(round(total * percent[1]))
 
-    return images[:train_n], images[train_n:]
+    return images[:train_num], images[train_num :train_num+val_num], images[train_num + val_num:]
     
-train_neg_list, val_neg_list = train_val_split(data_neg)
-print(list(map(len, [train_neg_list, val_neg_list])))
-train_pos_list, val_pos_list = train_val_split(data_pos)
-print(list(map(len, [train_pos_list, val_pos_list])))
+train_neg_list, val_neg_list, test_neg_list = train_val_split(data_neg)
+print(list(map(len, [train_neg_list, val_neg_list, test_neg_list])))
+train_pos_list, val_pos_list, test_pos_list = train_val_split(data_pos)
+print(list(map(len, [train_pos_list, val_pos_list, test_pos_list])))
 
 with open(save_path, 'w') as f:
     json.dump({
@@ -34,6 +35,8 @@ with open(save_path, 'w') as f:
         'train_neg': train_neg_list,
         'val_pos' : val_pos_list,
         'val_neg': val_neg_list,
+        'test_pos' : test_pos_list,
+        'test_neg' : test_neg_list
     }, f)
 
 
