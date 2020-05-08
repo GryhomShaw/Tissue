@@ -46,6 +46,7 @@ def get_args():
 os.environ["CUDA_VISIBLE_DEVICES"] =config.GPUS
 best_dsc = 0.
 
+
 def main():
 
     args = get_args()
@@ -84,7 +85,7 @@ def main():
             val_dset = MILdataset(data['val_pos']+data['val_neg'], trans)
             val_loader = DataLoader(
                 val_dset,
-                batch_size=config.TRAIN.BATCHSIZE, shuffle=False,
+                batch_size=config.TEST.BATCHSIZE, shuffle=False,
                 num_workers=config.WORKERS, pin_memory=True)
 
     with procedure('init tensorboardX'):
@@ -92,7 +93,6 @@ def main():
         if not os.path.isdir(train_log_path):
             os.makedirs(train_log_path)
         tensorboard_path = os.path.join(train_log_path, 'tensorboard')
-        #os.system('python ./lib/config/default.py {}'.format(os.path.join(train_log_path, 'cfg.yaml')))
         with open(os.path.join(train_log_path, 'cfg.yaml'), 'w') as f:
             print(config, file=f)
         if not os.path.isdir(tensorboard_path):
@@ -104,8 +104,10 @@ def main():
         index = []
         for idx, each_scale in enumerate(config.DATASET.MULTISCALE):
             train_dset.setmode(idx)
+            #print(len(train_loader), len(train_dset))
             probs = inference(epoch, train_loader, model)
-            topk = group_argtopk(probs, train_dset.targets, train_dset.slideLen, each_scale)
+            topk = group_argtopk(train_dset.ms_slideIDX[:], probs, train_dset.targets[:], train_dset.ms_slideLen[:],
+                                 each_scale)
             index.extend([[each[0], each[1]] for each in zip(topk, [idx]*len(topk))])
         train_dset.maketraindata(index)
         train_dset.shuffletraindata()
@@ -119,6 +121,7 @@ def main():
                 val_dset.setmode(idx)
                 probs, img_idxs, rows, cols = inference_vt(epoch, val_loader, model)
                 res = probs_parser(probs, img_idxs, rows, cols, val_dset, each_scale)
+
                 for key, val in res.items():
                     if key not in patch_info:
                         patch_info[key] = val
@@ -129,9 +132,10 @@ def main():
             for img_path, pred in masks.items():
                 mask_path = img_path.replace('.jpg', '_mask.jpg')
                 if os.path.isfile(mask_path):
-                    mask = cv2.imread(img_path.replace('.jpg', '_mask.jpg'), 0)
+                    mask = cv2.imread(mask_path, 0)
                     mask = mask.astype(np.int) if np.max(mask) == 1 else (mask // 255).astype(np.int)
-                    dsc .append(calc_dsc(pred, mask))
+                    dsc.append(calc_dsc(pred, mask))
+
             dsc = np.array(dsc).mean()
             '''
             maxs = group_max(np.array(val_dset.slideLen), probs, len(val_dset.targets), config.DATASET.MULTISCALE[-1])
@@ -159,8 +163,6 @@ def load_model(model, optimizer):
     model.load_state_dict(ckpt['state_dict'])
     optimizer.load_state_dict(ckpt['optimizer'])
     return ckpt['epoch'], ckpt['best_dsc'], model, optimizer
-
-
 
 
 if __name__ == '__main__':

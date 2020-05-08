@@ -12,7 +12,8 @@ def probs_parser(probs, img_idxs, rows, cols, dset, scale):
            rows.shape[0] == cols.shape[0], print("LENGTH ERROR")
 
     prefix = 'tissue-train-'
-    slide_len = np.array(dset.slideLen[:]) * pow(scale, 2)
+
+    slide_len = np.array(dset.ms_slideLen[:]).astype(np.int)
     assert slide_len[-1] == probs.shape[0], print("VAL ERROR")
     slide_names = [prefix + dset.grid[each_idx].split('/')[-3] + '/' + dset.grid[each_idx].split('/')[-2]+'.jpg'
                     for each_idx in img_idxs]
@@ -32,12 +33,8 @@ def probs_parser(probs, img_idxs, rows, cols, dset, scale):
     return res
 
 
-def group_max(slideLen, data, nmax, scale):
-    groups = []
-    slideLen = np.array(slideLen[:]) * pow(scale, 2)
-    for slide_idx in np.arange(1, len(slideLen)):
-        groups.extend([slide_idx-1] * (slideLen[slide_idx] - slideLen[slide_idx-1]))
-    groups = np.array(groups)
+def group_max(groups, data, nmax):
+    groups = np.array(groups[:]).astype(np.int)
     out = np.empty(nmax)
     out[:] = np.nan
     order = np.lexsort((data, groups))
@@ -50,13 +47,10 @@ def group_max(slideLen, data, nmax, scale):
     return out
 
 
-def group_argtopk(data, targets, slideLen, scale):
+def group_argtopk(groups, data, targets, slideLen, scale):
     k = config.TRAIN.SELECTNUM * scale
-    slideLen = np.array(slideLen[:]) * pow(scale, 2)
-    groups = []
-    for slide_idx in np.arange(1, len(slideLen)):
-        groups.extend([slide_idx-1] * (slideLen[slide_idx] - slideLen[slide_idx-1]))
-    groups = np.array(groups)
+    slideLen = np.array(slideLen).astype(np.int)
+    groups = np.array(groups).astype(np.int)
     assert groups.shape[0] == slideLen[-1], print("SHAPE ERROR")
     assert groups.shape[0] == data.shape[0], print("SHAPE ERROR")
     order = np.lexsort((data, groups))
@@ -71,7 +65,8 @@ def group_argtopk(data, targets, slideLen, scale):
             if targets[cur_id] == 1:
                 index[slideLen[idx] - k:slideLen[idx]] = True
             else:
-                index[slideLen[cur_id]:slideLen[cur_id] + k] = True
+                index[slideLen[cur_id]:slideLen[cur_id] + k//2] = True
+                index[slideLen[idx] - k//2:slideLen[idx]] = True
     return list(order[index])
 
 
@@ -94,3 +89,5 @@ def get_mask(patch_info):
         mask = np.argmax(mask, axis=2)
         res[each_img] = mask
     return res
+
+

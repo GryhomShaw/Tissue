@@ -53,6 +53,7 @@ def main():
         if config.TEST.RESUME:
             ch = torch.load(config.TEST.CHECKPOINT)
             model.load_state_dict(ch['state_dict'])
+            print(ch['best_dsc'], ch['epoch'])
 
         cudnn.benchmark = True
 
@@ -63,39 +64,43 @@ def main():
         #load data
         with open(config.DATASET.SPLIT) as f:
             data = json.load(f)
-
-        dset = MILdataset(data['val_pos'] + data['val_neg'],  trans)
+        data['test_pos'] = [each.replace('patch', 'patch_overlap') for each in data['test_pos']]
+        #data['train_pos'] = [each.replace('patch', 'patch_overlap') for each in data['train_pos']]
+        dset = MILdataset(data['test_pos'],  trans)
         loader = torch.utils.data.DataLoader(
             dset,
             batch_size=config.TEST.BATCHSIZE, shuffle=False,
             num_workers=config.WORKERS, pin_memory=True)
 
-    #dset.setmode(len(config.DATASET.MULTISCALE)-1)
-    output_path = os.path.join(config.TEST.OUTPUT, config.MODEL)
+    output_path = os.path.join(os.path.join(config.TEST.OUTPUT, config.MODEL), config.TRAIN.MODE)
     patch_info = {}
     for idx, each_scale in enumerate(config.DATASET.MULTISCALE):
         dset.setmode(idx)
         probs, img_idxs, rows, cols = inference_vt(0, loader, model)
+        '''
         maxs = group_max(dset.slideLen, probs[:, 1], len(dset.targets), each_scale)
         maxs = [1 if each >= 0.5 else 0 for each in maxs]
         err, fpr, fnr, f1 = calc_err(maxs, dset.targets)
+        '''
         res = probs_parser(probs, img_idxs, rows, cols, dset, each_scale)
+
         for key, values in res.items():
             if key not in patch_info:
                 patch_info[key] = values
             else:
                 patch_info[key].extend(values)
-
+        '''
         for img_path, labels in res.items():
             if len(labels) == 0:
                 continue
             plot_label(img_path, labels, each_scale, output_path)
+        '''
     masks = get_mask(patch_info)
     dsc = []
     for img_path, pred in masks.items():
         slide_class = img_path.split('/')[-2].split('-')[-1]
         slide_name = img_path.split('/')[-1].replace('.jpg', '_mask.jpg')
-        save_img(pred*255, os.path.join(output_path, slide_class), slide_name)
+        save_img(pred[:]*255, os.path.join(output_path, slide_class), slide_name)
         mask_path = img_path.replace('.jpg', '_mask.jpg')
 
         if os.path.isfile(mask_path):
@@ -121,7 +126,7 @@ def plot_label(img_path, labels, scale, output_path):
         start = (w, h)
         end = (w+patch_size, h+patch_size)
         cv2.rectangle(img, start, end, (0, 255, 0), 5)
-        cv2.putText(img, str(round(label[2][1], 2)), (w+25, h+25), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 1)
+        cv2.putText(img, str(round(label[2][1], 2)), (w+25, h+25), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 2)
     cv2.imwrite(save_path, img)
 
 
