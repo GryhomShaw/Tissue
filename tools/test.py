@@ -31,7 +31,7 @@ from lib.core.function import inference_vt
 from lib.utils.parser import probs_parser, group_max, get_mask
 from lib.core.criterion import calc_err
 from lib.core.criterion import calc_dsc
-os.environ['CUDA_VISIBLE_DEVICES'] = config.GPUS
+os.environ['CUDA_VISIBLE_DEVICES'] = ','.join(map(str, config.GPUS))
 
 
 def get_args():
@@ -64,15 +64,15 @@ def main():
         #load data
         with open(config.DATASET.SPLIT) as f:
             data = json.load(f)
-        data['test_pos'] = [each.replace('patch', 'patch_overlap') for each in data['test_pos']]
-        #data['train_pos'] = [each.replace('patch', 'patch_overlap') for each in data['train_pos']]
-        dset = MILdataset(data['test_pos'],  trans)
+        data_root = '/home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/patch_overlap_256/pos'
+        data_list = [os.path.join(data_root, each_slide) for each_slide in os.listdir(data_root)]
+        dset = MILdataset(data_list,  trans)
         loader = torch.utils.data.DataLoader(
             dset,
             batch_size=config.TEST.BATCHSIZE, shuffle=False,
             num_workers=config.WORKERS, pin_memory=True)
-
-    output_path = os.path.join(os.path.join(config.TEST.OUTPUT, config.MODEL), config.TRAIN.MODE)
+    time_fromat = time.strftime('%Y%m%d_%H%M%S', time.localtime())
+    output_path = os.path.join(os.path.join(config.TEST.OUTPUT, config.MODEL), config.TRAIN.MODE + '_' + time_fromat)
     patch_info = {}
     for idx, each_scale in enumerate(config.DATASET.MULTISCALE):
         dset.setmode(idx)

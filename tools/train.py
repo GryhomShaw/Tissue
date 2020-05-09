@@ -43,7 +43,7 @@ def get_args():
     return parser.parse_args()
 
 
-os.environ["CUDA_VISIBLE_DEVICES"] =config.GPUS
+os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config.GPUS))
 best_dsc = 0.
 
 
