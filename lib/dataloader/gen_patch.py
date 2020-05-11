@@ -27,7 +27,7 @@ def cur_img(p):
     img_extension = os.path.splitext(img_path)[-1]
     threshold = config.DATASET.PATCHTHRESH if ispos else config.DATASET.PATCHTHRESH + 0.3
     img_name = os.path.splitext(img_path.split('/')[-1])[0]
-    mask_path = img_path.replace('.jpg', '_mask.jpg')
+    mask_path = os.path.join(os.path.join(config.DATASET.ROOT, 'coarse'), img_name+'_mask.jpg')
     output_path = os.path.join(os.path.join(config.DATASET.PATCH, 'pos' if ispos else 'neg'), img_name)
     color_output_path = os.path.join(os.path.join(config.DATASET.PATCH, 'color'))
 
@@ -47,6 +47,7 @@ def cur_img(p):
     h, w = img.shape[0], img.shape[1]
 
     mask = cv2.imread(mask_path, 0) if ispos else ostu(img)
+    print(mask_path)
     #print(mask.shape, np.max(mask))
     labels = []
     for i in range(0, h, step):
