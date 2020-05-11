@@ -25,7 +25,7 @@ def cur_img(p):
     psize = config.DATASET.PATCHSIZE
     step = config.DATASET.PATCHSTEP
     img_extension = os.path.splitext(img_path)[-1]
-    threshold = config.DATASET.PATCHTHRESH
+    threshold = config.DATASET.POSTHRESH if ispos else config.DATASET.NEGTHRESH
     img_name = os.path.splitext(img_path.split('/')[-1])[0]
     output_path = os.path.join(os.path.join(config.DATASET.PATCH, 'pos' if ispos else 'neg'), img_name)
     mask_output_path = os.path.join(os.path.join(config.DATASET.PATCH, 'mask'))
@@ -48,8 +48,13 @@ def cur_img(p):
         pass
     img = cv2.imread(img_path)
     h, w = img.shape[0], img.shape[1]
-    mask = ostu(img)
-    cv2.imwrite(os.path.join(mask_output_path, img_name+'_mask.jpg'), mask)
+    if ispos and config.DATASET.USEMASK:
+        mask_path = img_path.replace('.jpg', '_mask.jpg')
+        mask = cv2.imread(mask_path, 0)
+    else:
+        mask = ostu(img)
+    if config.DATASET.SAVEMASK:
+        cv2.imwrite(os.path.join(mask_output_path, img_name+'_mask.jpg'), mask)
     labels = []
     for i in range(0, h, step):
         for j in range(0, w, step):
@@ -65,8 +70,9 @@ def cur_img(p):
             cur_img_name = "{}_{}.jpg".format(str(x1), str(y1))
             print(os.path.join(output_path, cur_img_name))
             cv2.imwrite(os.path.join(output_path, cur_img_name), cur)
-    color_img = color(img, labels)
-    cv2.imwrite(os.path.join(color_output_path, img_name+'_color.jpg'), color_img)
+    if config.DATASET.SAVECOLOR:
+        color_img = color(img, labels)
+        cv2.imwrite(os.path.join(color_output_path, img_name+'_color.jpg'), color_img)
 
 
 def ostu(img):
@@ -107,15 +113,16 @@ if __name__ == '__main__':
         for each_file in filenames:
             if '_mask' not in each_file:
                 params.append([os.path.join(roots, each_file), True])
-    for roots, _, filenames in os.walk(neg_path):
-        for each_file in filenames:
-            params.append([os.path.join(roots, each_file), False])
+    if not config.DATASET.ONLYPOS:
+        for roots, _, filenames in os.walk(neg_path):
+            for each_file in filenames:
+                params.append([os.path.join(roots, each_file), False])
     #print(len(params))
     pool = threadpool.ThreadPool(config.DATASET.POOLSIZE)
     requests = threadpool.makeRequests(cur_img, params)
     [pool.putRequest(req) for req in requests]
     pool.wait()
-
-    #check()
+    if config.DATASET.CHECK:
+        check()
 
 
