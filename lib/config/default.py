@@ -18,6 +18,7 @@ _C.DATASET = CN()
 _C.DATASET.ROOT = '/home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/data'
 _C.DATASET.POS = os.path.join(_C.DATASET.ROOT, 'tissue-train-pos')
 _C.DATASET.NEG = os.path.join(_C.DATASET.ROOT, 'tissue-train-neg')
+
 _C.DATASET.PATCH = os.path.join(_C.ROOT, 'patch')
 _C.DATASET.ONLYPOS = False
 _C.DATASET.USEMASK = False
@@ -28,6 +29,7 @@ _C.DATASET.PATCHSIZE = 1024
 _C.DATASET.PATCHSTEP = 512
 _C.DATASET.POSTHRESH = 0.50
 _C.DATASET.NEGTHRESH = 0.5
+
 _C.DATASET.POOLSIZE = 1
 _C.DATASET.LOWWER = 20
 _C.DATASET.UPPER = 120
@@ -40,7 +42,7 @@ _C.DATASET.STD = [0.229, 0.224, 0.225]  #RGB
 _C.DATASET.ALPHA = [1, 2.2] #正负样本比
 # tainval split
 _C.DATASET.SPLIT = os.path.join(_C.ROOT, 'lib/dataloader/train_val_split.json')
-_C.DATASET.SPLITRATIOS = [9, 1]
+_C.DATASET.SPLITRATIOS = [8, 1, 1]
 
 _C.TRAIN = CN()
 _C.TRAIN.VAL = True

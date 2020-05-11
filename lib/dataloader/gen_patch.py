@@ -23,12 +23,12 @@ def get_args():
 def cur_img(p):
     img_path, ispos = p
     psize = config.DATASET.PATCHSIZE
-    step = config.DATASET.PATCHSTEP
+    step = config.DATASET.PATCHSIZE // 2
     img_extension = os.path.splitext(img_path)[-1]
     threshold = config.DATASET.POSTHRESH if ispos else config.DATASET.NEGTHRESH
     img_name = os.path.splitext(img_path.split('/')[-1])[0]
+    mask_path = os.path.join(os.path.join(config.DATASET.ROOT, 'coarse'), img_name+'_mask.jpg')
     output_path = os.path.join(os.path.join(config.DATASET.PATCH, 'pos' if ispos else 'neg'), img_name)
-    mask_output_path = os.path.join(os.path.join(config.DATASET.PATCH, 'mask'))
     color_output_path = os.path.join(os.path.join(config.DATASET.PATCH, 'color'))
 
 
@@ -37,15 +37,12 @@ def cur_img(p):
     except:
         pass
 
-    try:
-        os.makedirs(mask_output_path)
-    except:
-        pass
 
     try:
         os.makedirs(color_output_path)
     except:
         pass
+
     img = cv2.imread(img_path)
     h, w = img.shape[0], img.shape[1]
     if ispos and config.DATASET.USEMASK:
@@ -68,18 +65,15 @@ def cur_img(p):
                 continue
             labels.append([x1, y1, x2, y2])
             cur_img_name = "{}_{}.jpg".format(str(x1), str(y1))
+            cur_mask_name = cur_img_name.replace('.jpg', '_mask.jpg')
+            cur_mask = cur_mask if ispos else np.zeros(shape=[x2-x1, y2-y1])
+            assert cur_mask.shape == cur.shape[:2], print("SHAPE ERROR")
             print(os.path.join(output_path, cur_img_name))
             cv2.imwrite(os.path.join(output_path, cur_img_name), cur)
     if config.DATASET.SAVECOLOR:
         color_img = color(img, labels)
         cv2.imwrite(os.path.join(color_output_path, img_name+'_color.jpg'), color_img)
 
-
-def ostu(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    ret1, th1 = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU)
-    mask = 255 - th1
-    return mask
 
 
 def check():
@@ -89,11 +83,18 @@ def check():
         count[each] = 0
         for each_dirs in os.listdir(os.path.join(patch_root, each)):
             cur_path = os.path.join(os.path.join(patch_root, each), each_dirs)
-            if len(os.listdir(cur_path)) < config.DATASET.LOWWER or len(os.listdir(cur_path)) > config.DATASET.UPPER:
+            if len(os.listdir(cur_path)) == 0:
                 shutil.rmtree(cur_path)
                 count[each] += 1
                 print("Remove {}".format(cur_path))
     print(count)
+
+
+def ostu(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ret1, th1 = cv2.threshold(gray, 0, 255, cv2.THRESH_OTSU)
+    mask = 255 - th1
+    return mask
 
 
 def color(img, coords):
@@ -124,5 +125,6 @@ if __name__ == '__main__':
     pool.wait()
     if config.DATASET.CHECK:
         check()
+
 
 
