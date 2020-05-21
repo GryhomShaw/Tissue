@@ -23,7 +23,7 @@ def get_args():
 def cur_img(p):
     img_path, ispos = p
     psize = config.DATASET.PATCHSIZE
-    step = config.DATASET.PATCHSIZE // 2
+    step = config.DATASET.POSSTEP if ispos else config.DATASET.NEGSTEP
     img_extension = os.path.splitext(img_path)[-1]
     threshold = config.DATASET.POSTHRESH if ispos else config.DATASET.NEGTHRESH
     img_name = os.path.splitext(img_path.split('/')[-1])[0]
@@ -50,8 +50,7 @@ def cur_img(p):
         mask = cv2.imread(mask_path, 0)
     else:
         mask = ostu(img)
-    if config.DATASET.SAVEMASK:
-        cv2.imwrite(os.path.join(mask_output_path, img_name+'_mask.jpg'), mask)
+
     labels = []
     for i in range(0, h, step):
         for j in range(0, w, step):
@@ -70,6 +69,8 @@ def cur_img(p):
             assert cur_mask.shape == cur.shape[:2], print("SHAPE ERROR")
             print(os.path.join(output_path, cur_img_name))
             cv2.imwrite(os.path.join(output_path, cur_img_name), cur)
+            if config.DATASET.SAVEMASK:
+                cv2.imwrite(os.path.join(output_path, cur_mask_name), cur_mask)
     if config.DATASET.SAVECOLOR:
         color_img = color(img, labels)
         cv2.imwrite(os.path.join(color_output_path, img_name+'_color.jpg'), color_img)
@@ -79,14 +80,16 @@ def cur_img(p):
 def check():
     patch_root = config.DATASET.PATCH
     count = {}
-    for each in ['pos', 'neg']:
+    check_list = ['pos'] if config.DATASET.ONLYPOS else ['pos', 'neg']
+    for each in check_list:
         count[each] = 0
         for each_dirs in os.listdir(os.path.join(patch_root, each)):
             cur_path = os.path.join(os.path.join(patch_root, each), each_dirs)
-            if len(os.listdir(cur_path)) == 0:
+            if len(os.listdir(cur_path)) < config.DATASET.LOWWER or len(os.listdir(cur_path)) > config.DATASET.UPPER:
+                print("Remove {}\t{}".format(cur_path, len(os.listdir(cur_path))))
                 shutil.rmtree(cur_path)
                 count[each] += 1
-                print("Remove {}".format(cur_path))
+
     print(count)
 
 

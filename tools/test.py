@@ -64,8 +64,8 @@ def main():
         #load data
         with open(config.DATASET.SPLIT) as f:
             data = json.load(f)
-        data_root = '/home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/patch_overlap_256/pos'
-        data_list = [os.path.join(data_root, each_slide) for each_slide in os.listdir(data_root)]
+        data_root = '/home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/patch/pos'
+        data_list = [os.path.join(data_root, each_slide) for each_slide in os.listdir(data_root)][:50]
         dset = MILdataset(data_list,  trans)
         loader = torch.utils.data.DataLoader(
             dset,
@@ -74,6 +74,7 @@ def main():
     time_fromat = time.strftime('%Y%m%d_%H%M%S', time.localtime())
     output_path = os.path.join(os.path.join(config.TEST.OUTPUT, config.MODEL), config.TRAIN.MODE + '_' + time_fromat)
     patch_info = {}
+    post_processing = time.time()
     for idx, each_scale in enumerate(config.DATASET.MULTISCALE):
         dset.setmode(idx)
         probs, img_idxs, rows, cols = inference_vt(0, loader, model)
@@ -95,7 +96,10 @@ def main():
                 continue
             plot_label(img_path, labels, each_scale, output_path)
         '''
+
     masks = get_mask(patch_info)
+    print("finish parser: {}".format(time.time() - post_processing))
+    start = time.time()
     dsc = []
     for img_path, pred in masks.items():
         slide_class = img_path.split('/')[-2].split('-')[-1]
@@ -107,8 +111,11 @@ def main():
             mask = cv2.imread(mask_path, 0)
             mask = mask.astype(np.int) if np.max(mask) == 1 else (mask // 255).astype(np.int)
             dsc.append(calc_dsc(pred, mask))
+        print("{} \t {}".format(img_path, time.time() - start))
+        start = time.time()
     mean_dsc = np.array(dsc).mean()
     print(mean_dsc, dsc)
+
 
 
 def plot_label(img_path, labels, scale, output_path):

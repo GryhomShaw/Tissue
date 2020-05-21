@@ -1,3 +1,4 @@
+import os
 import torch
 import time
 import numpy as np
@@ -6,6 +7,8 @@ from lib.utils.average import AverageMeter, ProgressMeter
 from sklearn.metrics import f1_score
 from eic_utils import cp
 from lib.config import config
+import cv2
+import shutil
 
 
 def trainer(run, loader, model, criterion, optimizer, writer):
@@ -67,6 +70,7 @@ def inference_vt(epoch, loader, model):   #using in val and test
     img_idxs = []
     rows = []
     cols = []
+
     with torch.no_grad():
         end = time.time()
         for i, (input, img_idx, row, col) in enumerate(loader):
@@ -77,15 +81,41 @@ def inference_vt(epoch, loader, model):   #using in val and test
             cols.extend(list(col.numpy()))
             output = F.softmax(model(input), dim=1)
             batch_time.update(time.time() - end)
+            if config.TEST.CAM:
+                cur_scale = loader.dataset.unit
+                cam = model.module.forward_cam(input)
+
+                cam = F.interpolate(cam, mode='bilinear', size=(cur_scale, cur_scale), align_corners=True)
+                '''
+                label = (output > 0.5).float()
+                label = label.view(label.size(0), 1, label.size(1))
+                
+                cam = cam.view(cam.size(0), cam.size(1), -1)
+                cam = torch.matmul(label, cam).squeeze()
+                '''
+                cam = cam[:, 1, :, :].squeeze()
+                cam = cam.view(cam.size(0), cur_scale, -1)
+                cam = cam.cpu().numpy() #B H W
+                cur_res = output.detach().clone().cpu().numpy()
+
+                for idx, each_path in enumerate(range(cam.shape[0])):
+                    cur_slide_path = loader.dataset.grid[img_idx[idx]]
+                    cur_slide = cur_slide_path.split('/')[-2]
+                    cur_name = cur_slide_path.split('/')[-1]
+                    cur_class = 'neg' if cur_res[idx][0] > cur_res[idx][1] else 'pos'
+                    cur_dir = os.path.join(config.TEST.CAMPATH, cur_slide, str(cur_scale), cur_class)
+                    src = os.path.join(config.DATASET.PATCH, 'pos', str(cur_slide), cur_name)
+                    if not os.path.isdir(cur_dir):
+                        os.makedirs(cur_dir)
+                    #shutil.copy(src, cur_dir)
+
+                    cur_cam =cam[idx, :, :]
+                    cur_cam = (cur_cam - np.min(cur_cam)) / (np.max(cur_cam) - np.min(cur_cam) + 1e-5)
+                    cur_cam = np.clip(cur_cam*255, 0, 255).astype(np.uint8)
+                    cv2.imwrite(os.path.join(cur_dir, cur_name.replace('.jpg', '_mask.jpg')), cur_cam)
+
             probs[i*config.TEST.BATCHSIZE:i*config.TEST.BATCHSIZE+input.size(0), :] = output.detach().clone()
             if (i+1) % config.TEST.DISPLAY == 0:
                 progress.display(i)
             end = time.time()
     return probs.cpu().numpy(), np.array(img_idxs), np.array(rows), np.array(cols)
-
-
-def gamma_ploy(epoch):
-    if epoch < 2:
-        return 0
-    else:
-        return 1

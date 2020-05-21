@@ -3,6 +3,8 @@ __pycache__/
 *.py[co]
 *.json
 *.jpg
+*.lst
+*.bak
 data/
 log/
 patch*/
@@ -15,3 +17,4 @@ tissue=train-neg/
 tissue-train-pos/
 color/
 mask/
+temp*/

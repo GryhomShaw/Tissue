@@ -131,6 +131,10 @@ class MILdataset(data.Dataset):
             img_path = self.grid[img_idx]
             img = cv2.imread(img_path)[:, :, ::-1]
             img = img[row:row+self.unit, col:col + self.unit, :]
+           # print(img.shape)
+            if img is None:
+                print(img_path, img.shape, row, col, row+self.unit, col+self.unit)
+            #print(img.shape, row, col, self.unit)
             if self.unit != 224:
                 img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_NEAREST)
             if self.transform is not None:

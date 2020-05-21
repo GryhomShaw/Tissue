@@ -5,7 +5,7 @@ from lib.config import config
 
 with open(config.DATASET.SPLIT, 'r') as f:
     data = json.load(f)
-
+print(len(data['train_pos']), len(data['val_pos']), len(data['test_pos']))
 for each_phase in ['train', 'val', 'test']:
     cur = data[each_phase+'_'+'pos'] + data[each_phase+'_'+'neg']
     pos_list = []
@@ -29,3 +29,17 @@ for each_phase in ['train', 'val', 'test']:
     with open(cur_name, 'w') as f:
         for each_img in img_list:
             print("{}\t{}".format(each_img, each_img.replace('.jpg', '_mask.jpg')), file=f)
+
+res = []
+for each_phase in ['val', 'test']:
+    cur = data[each_phase+'_pos']
+    root = '/home/gryhomshaw/SSD1T/xiaoguohong/HRNet-Semantic-Segmentation/data/tissue/test'
+    for each_slide in cur:
+        slide_name = each_slide.split('/')[-1].replace('.jpg', '')
+        res.append(os.path.join(root, slide_name))
+
+with open('valtest.lst', 'w') as f:
+    for each_slide in res:
+        print(each_slide)
+        print(each_slide, file=f)
+

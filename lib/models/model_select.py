@@ -1,11 +1,12 @@
 import torchvision.models as models
 import torch.nn as nn
+from .densenet_cam import densenet121
 MODEL_DICT = {
     'resnet34': models.resnet34(True),
     'resnet50': models.resnet50(True),
     'resnext': models.resnext50_32x4d(True),
     'resnext101': models.resnext101_32x8d(True),
-    'densenet' : models.densenet121(True),
+    'densenet' : densenet121(True),
     'mobilenet' : models.mobilenet_v2(True)
 }
 
