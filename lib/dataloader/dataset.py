@@ -120,7 +120,7 @@ class MILdataset(data.Dataset):
                 ifaug = np.random.randint(2)
                 if ifaug == 1:  # 50%
                     img = self.seq.augment_image(img)
-                img = cv2.resize(img, (224, 224))
+                img = cv2.resize(img, (128, 128))
             if self.transform is not None:
                 img = self.transform(img)
             return img, target
@@ -136,7 +136,7 @@ class MILdataset(data.Dataset):
                 print(img_path, img.shape, row, col, row+self.unit, col+self.unit)
             #print(img.shape, row, col, self.unit)
             if self.unit != 224:
-                img = cv2.resize(img, (224, 224), interpolation=cv2.INTER_NEAREST)
+                img = cv2.resize(img, (128, 128), interpolation=cv2.INTER_NEAREST)
             if self.transform is not None:
                 img = self.transform(img)
             return img, img_idx, row, col

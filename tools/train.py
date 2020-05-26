@@ -44,8 +44,7 @@ def get_args():
     update_config(config, args)
     return parser.parse_args()
 
-temp_gpu = ','.join(map(str, config.GPUS))
-print(temp_gpu, type(temp_gpu))
+
 os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config.GPUS))
 best_dsc = 0.
 
@@ -79,13 +78,13 @@ def main():
         with open(data_split) as f:
             data = json.load(f)
 
-        train_dset = MILdataset(data['train_neg'][:5] + data['train_pos'][:5], trans)
+        train_dset = MILdataset(data['train_neg'] + data['train_pos'], trans)
         train_loader = DataLoader(
             train_dset,
             batch_size=config.TRAIN.BATCHSIZE, shuffle=False,
             num_workers=config.WORKERS, pin_memory=True)
         if config.TRAIN.VAL:
-            val_dset = MILdataset(data['val_pos'][:5]+data['val_neg'][:5], trans)
+            val_dset = MILdataset(data['val_pos']+data['val_neg'], trans)
             val_loader = DataLoader(
                 val_dset,
                 batch_size=config.TEST.BATCHSIZE, shuffle=False,

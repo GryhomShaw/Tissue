@@ -121,11 +121,12 @@ if __name__ == '__main__':
         for roots, _, filenames in os.walk(neg_path):
             for each_file in filenames:
                 params.append([os.path.join(roots, each_file), False])
-    #print(len(params))
+
     pool = threadpool.ThreadPool(config.DATASET.POOLSIZE)
     requests = threadpool.makeRequests(cur_img, params)
     [pool.putRequest(req) for req in requests]
     pool.wait()
+    print(len(params))
     if config.DATASET.CHECK:
         check()
 

@@ -12,12 +12,11 @@ def probs_parser(probs, img_idxs, rows, cols, dset, scale):
 
     assert probs.shape[0] == img_idxs.shape[0] and img_idxs.shape[0] == rows.shape[0] and \
            rows.shape[0] == cols.shape[0], print("LENGTH ERROR")
-    end = time.time()
-    prefix = 'tissue-train-'
+    #end = time.time()
 
     slide_len = np.array(dset.ms_slideLen[:]).astype(np.int)
     assert slide_len[-1] == probs.shape[0], print("VAL ERROR")
-    slide_names = [prefix + dset.grid[each_idx].split('/')[-3] + '/' + dset.grid[each_idx].split('/')[-2]+'.jpg'
+    slide_names = [dset.grid[each_idx].split('/')[-3] + '/' + dset.grid[each_idx].split('/')[-2]+'.jpg'
                     for each_idx in img_idxs]
     row_offsets = np.array([int(dset.grid[each_idx].split('/')[-1].split('_')[0]) for each_idx in img_idxs])
     col_offsets = np.array([int((dset.grid[each_idx].split('/')[-1].split('_')[-1]).replace('.jpg', ''))
@@ -26,15 +25,15 @@ def probs_parser(probs, img_idxs, rows, cols, dset, scale):
     rows = rows + row_offsets
     cols = cols + col_offsets
     res = {}
-    print('Parser: cal offsets cost', time.time() - end)
-    temp_end = time.time()
+    #print('Parser: cal offsets cost', time.time() - end)
+    #temp_end = time.time()
     for idx in range(slide_len.shape[0]-1):
         start = slide_len[idx]
         end = slide_len[idx+1]
         res[img_path[start]] = []
         for label_idx in range(start, end):
             res[img_path[start]].append([rows[label_idx], cols[label_idx], probs[label_idx], scale])
-    print('Parser: cal_res', time.time() - temp_end)
+    #print('Parser: cal_res', time.time() - temp_end)
     return res
 
 
@@ -78,6 +77,7 @@ def group_argtopk(groups, data, targets, slideLen, scale):
 def get_mask(each_img, labels, output_path=None, save=True):
     res = {}
     #print("Processing {}".format(each_img))
+
     img = cv2.imread(each_img)
     h, w = img.shape[0], img.shape[1]
     mask = np.zeros(shape=[h, w, 2]).astype(np.float)
@@ -116,5 +116,3 @@ def save_img(img, save_path, slide_name):
     cv2.imwrite(os.path.join(save_path, slide_name), img)
 
 
-def func(p):
-    print('woooo', p)
