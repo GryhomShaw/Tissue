@@ -191,14 +191,23 @@ class DenseNet(nn.Module):
             elif isinstance(m, nn.Linear):
                 nn.init.constant_(m.bias, 0)
 
-    def forward(self, x):
-        features = self.features(x)
-        out = F.relu(features, inplace=True)
-        out = F.adaptive_avg_pool2d(out, (1, 1))
-        out = torch.flatten(out, 1)
-        out = self.classifier(out)
+    def forward(self, x, cam=False):
+        if cam:
+            featrues = self.features(x)
+            out = F.relu(featrues, inplace=True)
+            h, w = out.size(2), out.size(3)
+            out = out.view(out.size(0), out.size(1), -1)  # N * C * H*
+            cam = torch.matmul(self.classifier.weight, out)
+            cam = F.relu(cam)
+            out = cam.view(cam.size(0), cam.size(1), h, w)  # N, K, H, W
+        else:
+            features = self.features(x)
+            out = F.relu(features, inplace=True)
+            out = F.adaptive_avg_pool2d(out, (1, 1))
+            out = torch.flatten(out, 1)
+            out = self.classifier(out)
         return out
-
+    '''
     def forward_cam(self, x):
         featrues = self.features(x)
         out = F.relu(featrues, inplace=True)
@@ -208,7 +217,7 @@ class DenseNet(nn.Module):
         cam = F.relu(cam)
         cam = cam.view(cam.size(0), cam.size(1), h, w) # N, K, H, W
         return cam
-
+    '''
 
 def _load_state_dict(model, model_url, progress):
     # '.'s are no longer allowed in module names, but previous _DenseLayer

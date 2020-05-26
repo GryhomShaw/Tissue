@@ -1,3 +1,4 @@
+
 import os
 import sys
 import time
@@ -6,6 +7,7 @@ import argparse
 import random
 import json
 import cv2
+import multiprocessing
 
 import torch
 import torch.nn as nn
@@ -42,7 +44,8 @@ def get_args():
     update_config(config, args)
     return parser.parse_args()
 
-
+temp_gpu = ','.join(map(str, config.GPUS))
+print(temp_gpu, type(temp_gpu))
 os.environ["CUDA_VISIBLE_DEVICES"] = ','.join(map(str, config.GPUS))
 best_dsc = 0.
 
@@ -76,13 +79,13 @@ def main():
         with open(data_split) as f:
             data = json.load(f)
 
-        train_dset = MILdataset(data['train_neg'] + data['train_pos'], trans)
+        train_dset = MILdataset(data['train_neg'][:5] + data['train_pos'][:5], trans)
         train_loader = DataLoader(
             train_dset,
             batch_size=config.TRAIN.BATCHSIZE, shuffle=False,
             num_workers=config.WORKERS, pin_memory=True)
         if config.TRAIN.VAL:
-            val_dset = MILdataset(data['val_pos']+data['val_neg'], trans)
+            val_dset = MILdataset(data['val_pos'][:5]+data['val_neg'][:5], trans)
             val_loader = DataLoader(
                 val_dset,
                 batch_size=config.TEST.BATCHSIZE, shuffle=False,
@@ -127,14 +130,14 @@ def main():
                         patch_info[key] = val
                     else:
                         patch_info[key].extend(val)
-            masks = get_mask(patch_info)
+            res = []
             dsc = []
-            for img_path, pred in masks.items():
-                mask_path = img_path.replace('.jpg', '_mask.jpg')
-                if os.path.isfile(mask_path):
-                    mask = cv2.imread(mask_path, 0)
-                    mask = mask.astype(np.int) if np.max(mask) == 1 else (mask // 255).astype(np.int)
-                    dsc.append(calc_dsc(pred, mask))
+            with multiprocessing.Pool(processes=16) as pool:
+                for each_img, each_labels in patch_info.items():
+                    res.append(pool.apply(get_mask, (each_img, each_labels, None, False)))
+            pool.join()
+            for each_res in res:
+                dsc.extend([each_val for each_val in each_res.values()])
 
             dsc = np.array(dsc).mean()
             '''
@@ -167,4 +170,3 @@ def load_model(model, optimizer):
 
 if __name__ == '__main__':
     main()
-

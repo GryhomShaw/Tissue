@@ -5,11 +5,13 @@ __pycache__/
 *.jpg
 *.lst
 *.bak
-data/
+*.log
 log/
 patch*/
 
 train_output/
+temp_output/
+test_output/
 pretrained_models
 scripts/
 detail-api/
@@ -18,3 +20,4 @@ tissue-train-pos/
 color/
 mask/
 temp*/
+data/

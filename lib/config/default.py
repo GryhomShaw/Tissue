@@ -2,12 +2,11 @@ import os
 
 from yacs.config import CfgNode as CN 
 
-
 _C = CN()
 _C.ROOT = '/home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue'
 _C.RANDOMSEED = 2333
 _C.WORKERS = 16
-_C.GPUS = (0, 1, 2, 3)
+_C.GPUS = (0, 1)
 _C.PIN_MEMORY = True
 _C.MODEL = 'densenet'
 _C.NUMCLASSES = 2
@@ -15,11 +14,12 @@ _C.NUMCLASSES = 2
 #dataset
 _C.DATASET = CN()
 #gen_patch
-_C.DATASET.ROOT = '/home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/data'
+_C.DATASET.NAME = 'Tissue'
+_C.DATASET.ROOT = os.path.join('/home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/data/', _C.DATASET.NAME)
 _C.DATASET.POS = os.path.join(_C.DATASET.ROOT, 'tissue-train-pos')
 _C.DATASET.NEG = os.path.join(_C.DATASET.ROOT, 'tissue-train-neg')
 
-_C.DATASET.PATCH = os.path.join(_C.ROOT, 'patch')
+_C.DATASET.PATCH = os.path.join(_C.ROOT, 'patch_train', _C.DATASET.NAME)
 _C.DATASET.ONLYPOS = False
 _C.DATASET.USEMASK = False
 _C.DATASET.SAVEMASK = False
@@ -46,7 +46,7 @@ _C.DATASET.SPLITRATIOS = [8, 1, 1]
 
 _C.TRAIN = CN()
 _C.TRAIN.VAL = True
-_C.TRAIN.VALGAP = 2
+_C.TRAIN.VALGAP = 1
 _C.TRAIN.OUTPUT = './train_output'
 _C.TRAIN.EPOCHS = 100
 _C.TRAIN.BATCHSIZE = 128

@@ -1,7 +1,9 @@
 import os
 import cv2
+import time
 import numpy as np
 from lib.config import config
+from lib.core.criterion import calc_dsc
 
 
 def probs_parser(probs, img_idxs, rows, cols, dset, scale):
@@ -10,7 +12,7 @@ def probs_parser(probs, img_idxs, rows, cols, dset, scale):
 
     assert probs.shape[0] == img_idxs.shape[0] and img_idxs.shape[0] == rows.shape[0] and \
            rows.shape[0] == cols.shape[0], print("LENGTH ERROR")
-
+    end = time.time()
     prefix = 'tissue-train-'
 
     slide_len = np.array(dset.ms_slideLen[:]).astype(np.int)
@@ -24,12 +26,15 @@ def probs_parser(probs, img_idxs, rows, cols, dset, scale):
     rows = rows + row_offsets
     cols = cols + col_offsets
     res = {}
+    print('Parser: cal offsets cost', time.time() - end)
+    temp_end = time.time()
     for idx in range(slide_len.shape[0]-1):
         start = slide_len[idx]
         end = slide_len[idx+1]
         res[img_path[start]] = []
         for label_idx in range(start, end):
             res[img_path[start]].append([rows[label_idx], cols[label_idx], probs[label_idx], scale])
+    print('Parser: cal_res', time.time() - temp_end)
     return res
 
 
@@ -70,24 +75,46 @@ def group_argtopk(groups, data, targets, slideLen, scale):
     return list(order[index])
 
 
-def get_mask(patch_info):
+def get_mask(each_img, labels, output_path=None, save=True):
     res = {}
-    for each_img, labels in patch_info.items():
-        img = cv2.imread(each_img)
-        h, w = img.shape[0], img.shape[1]
-        mask = np.zeros(shape=[h, w, 2]).astype(np.float)
-        count = np.ones(shape=[h, w, 1])
-        for each_label in labels:
-            patch_len = config.DATASET.PATCHSIZE // each_label[-1]
-            x1 = each_label[0]
-            y1 = each_label[1]
-            x2 = x1 + patch_len
-            y2 = y1 + patch_len
-            mask[x1:x2, y1:y2, :] += each_label[2]
-            count[x1:x2, y1:y2, :] += 1
-        mask = mask / count
-        mask = np.argmax(mask, axis=2)
-        res[each_img] = mask
+    #print("Processing {}".format(each_img))
+    img = cv2.imread(each_img)
+    h, w = img.shape[0], img.shape[1]
+    mask = np.zeros(shape=[h, w, 2]).astype(np.float)
+    count = np.ones(shape=[h, w, 1])
+    for each_label in labels:
+        patch_len = config.DATASET.PATCHSIZE // each_label[-1]
+        x1 = each_label[0]
+        y1 = each_label[1]
+        x2 = x1 + patch_len
+        y2 = y1 + patch_len
+        mask[x1:x2, y1:y2, :] += each_label[2]
+        count[x1:x2, y1:y2, :] += 1
+    mask = mask / count
+    mask_pred = np.argmax(mask, axis=2)
+    slide_class, slide_name = parser_path(each_img)
+    if save:
+        save_img(mask_pred[:] * 255, os.path.join(output_path, slide_class), slide_name)
+    mask_path = each_img.replace('.jpg', '_mask.jpg')
+    if os.path.isfile(mask_path):
+        mask = cv2.imread(mask_path, 0)
+        mask = mask.astype(np.int) if np.max(mask) == 1 else (mask // 255).astype(np.int)
+        res[each_img] = calc_dsc(mask_pred, mask)
+        #print('procsessing', res)
     return res
 
 
+def parser_path(img_path):
+    slide_class = img_path.split('/')[-2].split('-')[-1]
+    slide_name = img_path.split('/')[-1].replace('.jpg', '_mask.jpg')
+    return slide_class, slide_name
+
+
+def save_img(img, save_path, slide_name):
+    if not os.path.isdir(save_path):
+        os.makedirs(save_path)
+    cv2.imwrite(os.path.join(save_path, slide_name), img)
+
+
+def func(p):
+    print('woooo', p)

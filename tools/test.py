@@ -6,6 +6,7 @@ import argparse
 import random
 import bisect
 import PIL
+import multiprocessing
 import PIL.Image as Image
 import torch
 import torch.nn as nn
@@ -27,7 +28,7 @@ from lib.config import config
 from lib.config import update_config
 from lib.models.model_select import get_model
 from lib.dataloader.dataset import MILdataset
-from lib.core.function import inference_vt
+from lib.core.function import inference_vt, inference_cam
 from lib.utils.parser import probs_parser, group_max, get_mask
 from lib.core.criterion import calc_err
 from lib.core.criterion import calc_dsc
@@ -48,7 +49,6 @@ def main():
     #load model
     with procedure('load model'):
         model = get_model(config)
-        #model.fc = nn.Linear(model.fc.in_features, config.NUMCLASSES)
         model = nn.DataParallel(model.cuda())
         if config.TEST.RESUME:
             ch = torch.load(config.TEST.CHECKPOINT)
@@ -65,7 +65,7 @@ def main():
         with open(config.DATASET.SPLIT) as f:
             data = json.load(f)
         data_root = '/home/gryhomshaw/SSD1T/xiaoguohong/MIL_Tissue/patch/pos'
-        data_list = [os.path.join(data_root, each_slide) for each_slide in os.listdir(data_root)][:50]
+        data_list = [os.path.join(data_root, each_slide) for each_slide in os.listdir(data_root)][:10]
         dset = MILdataset(data_list,  trans)
         loader = torch.utils.data.DataLoader(
             dset,
@@ -74,48 +74,43 @@ def main():
     time_fromat = time.strftime('%Y%m%d_%H%M%S', time.localtime())
     output_path = os.path.join(os.path.join(config.TEST.OUTPUT, config.MODEL), config.TRAIN.MODE + '_' + time_fromat)
     patch_info = {}
-    post_processing = time.time()
+
     for idx, each_scale in enumerate(config.DATASET.MULTISCALE):
         dset.setmode(idx)
         probs, img_idxs, rows, cols = inference_vt(0, loader, model)
-        '''
-        maxs = group_max(dset.slideLen, probs[:, 1], len(dset.targets), each_scale)
-        maxs = [1 if each >= 0.5 else 0 for each in maxs]
-        err, fpr, fnr, f1 = calc_err(maxs, dset.targets)
-        '''
+        if config.TEST.CAM:
+            inference_cam(0, loader, model)
+        parser_end = time.time()
         res = probs_parser(probs, img_idxs, rows, cols, dset, each_scale)
-
+        print("finish parser: {}".format(time.time() - parser_end))
+        merage_end = time.time()
         for key, values in res.items():
             if key not in patch_info:
                 patch_info[key] = values
             else:
                 patch_info[key].extend(values)
+        print("finish merage: {}".format(time.time() - merage_end))
         '''
         for img_path, labels in res.items():
             if len(labels) == 0:
                 continue
             plot_label(img_path, labels, each_scale, output_path)
         '''
-
-    masks = get_mask(patch_info)
-    print("finish parser: {}".format(time.time() - post_processing))
-    start = time.time()
+    masks_end = time.time()
+    res = []
     dsc = []
-    for img_path, pred in masks.items():
-        slide_class = img_path.split('/')[-2].split('-')[-1]
-        slide_name = img_path.split('/')[-1].replace('.jpg', '_mask.jpg')
-        save_img(pred[:]*255, os.path.join(output_path, slide_class), slide_name)
-        mask_path = img_path.replace('.jpg', '_mask.jpg')
+    with multiprocessing.Pool(processes=16) as pool:
+        for each_img, each_labels in patch_info.items():
+            res.append(pool.apply(get_mask, (each_img, each_labels, output_path)))
+    pool.join()
+    for each_res in res:
+        print(type(each_res), each_res)
+        dsc.extend([each_val for each_val in each_res.values()])
 
-        if os.path.isfile(mask_path):
-            mask = cv2.imread(mask_path, 0)
-            mask = mask.astype(np.int) if np.max(mask) == 1 else (mask // 255).astype(np.int)
-            dsc.append(calc_dsc(pred, mask))
-        print("{} \t {}".format(img_path, time.time() - start))
-        start = time.time()
+    print("finish get mask: {}".format(time.time() - masks_end))
+
     mean_dsc = np.array(dsc).mean()
     print(mean_dsc, dsc)
-
 
 
 def plot_label(img_path, labels, scale, output_path):
